@@ -59,7 +59,7 @@ where
 {
     if !cfg.metric.enable {
         debug!("metrics::init skipping metrics export setup");
-        return Ok(SdkMeterProvider::default());
+        return Ok(NoopMeterProvider::new());
     }
 
     debug!("metrics::init configure metrics...");
