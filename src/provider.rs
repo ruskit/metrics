@@ -68,8 +68,8 @@ where
         MetricExporterKind::OtlpGrpc => {
             #[cfg(feature = "otlp")]
             {
-                let meter = exporters::otlp::install(cfg)?;
-                global::set_meter_provider(meter);
+                let meter = exporters::otlp_grpc::install(cfg)?;
+                global::set_meter_provider(meter.clone());
                 debug!("metrics::init otlp installed");
                 Ok(meter)
             }
@@ -84,7 +84,7 @@ where
             #[cfg(feature = "stdout")]
             {
                 let meter = exporters::stdout::install()?;
-                global::set_meter_provider(meter);
+                global::set_meter_provider(meter.clone());
                 debug!("metrics::init stdout installed");
                 Ok(meter)
             }
