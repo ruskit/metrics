@@ -12,13 +12,12 @@
 
 use crate::errors::MetricsError;
 use configs::{Configs, DynamicConfigs, MetricExporterKind};
-use prometheus::Registry;
-use std::sync::Arc;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use tracing::{debug, error};
 
-#[cfg(any(feature = "otlp", feature = "prometheus", feature = "stdout"))]
+#[cfg(any(feature = "otlp", feature = "stdout"))]
 use crate::exporters;
-#[cfg(any(feature = "otlp", feature = "prometheus", feature = "stdout"))]
+#[cfg(any(feature = "otlp", feature = "stdout"))]
 use opentelemetry::global;
 
 /// Initialize metrics collection based on application configuration.
@@ -54,13 +53,13 @@ use opentelemetry::global;
 ///     Ok(())
 /// }
 /// ```
-pub fn init<T>(cfg: &Configs<T>) -> Result<Option<Arc<Registry>>, MetricsError>
+pub fn init<T>(cfg: &Configs<T>) -> Result<SdkMeterProvider, MetricsError>
 where
     T: DynamicConfigs,
 {
     if !cfg.metric.enable {
         debug!("metrics::init skipping metrics export setup");
-        return Ok(None);
+        return Ok(SdkMeterProvider::default());
     }
 
     debug!("metrics::init configure metrics...");
@@ -69,9 +68,10 @@ where
         MetricExporterKind::OtlpGrpc => {
             #[cfg(feature = "otlp")]
             {
-                global::set_meter_provider(exporters::otlp::install(cfg)?);
+                let meter = exporters::otlp_grpc::install(cfg)?;
+                global::set_meter_provider(meter.clone());
                 debug!("metrics::init otlp installed");
-                Ok(None)
+                Ok(meter)
             }
 
             #[cfg(not(feature = "otlp"))]
@@ -80,27 +80,13 @@ where
                 Err(MetricsError::InvalidFeaturesError)
             }
         }
-        MetricExporterKind::Prometheus => {
-            #[cfg(feature = "prometheus")]
-            {
-                let (provider, r) = exporters::prom::install(cfg)?;
-                global::set_meter_provider(provider);
-                debug!("metrics::init prometheus installed");
-                Ok(Some(r))
-            }
-
-            #[cfg(not(feature = "prometheus"))]
-            {
-                error!("prometheus metrics required to configure features = [prometheus]");
-                Err(MetricsError::InvalidFeaturesError)
-            }
-        }
         MetricExporterKind::Stdout => {
             #[cfg(feature = "stdout")]
             {
-                global::set_meter_provider(exporters::stdout::install()?);
+                let meter = exporters::stdout::install()?;
+                global::set_meter_provider(meter.clone());
                 debug!("metrics::init stdout installed");
-                Ok(None)
+                Ok(meter)
             }
 
             #[cfg(not(feature = "stdout"))]
