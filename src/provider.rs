@@ -10,15 +10,9 @@
 //! based on application configuration. It handles feature detection and
 //! initializes the appropriate exporter based on configuration.
 
-use crate::errors::MetricsError;
-use configs::{Configs, DynamicConfigs, MetricExporterKind};
+use crate::{errors::MetricsError, exporters};
 use opentelemetry_sdk::metrics::SdkMeterProvider;
-use tracing::{debug, error};
-
-#[cfg(any(feature = "otlp", feature = "stdout"))]
-use crate::exporters;
-#[cfg(any(feature = "otlp", feature = "stdout"))]
-use opentelemetry::global;
+use tracing::info;
 
 /// Initialize metrics collection based on application configuration.
 ///
@@ -53,47 +47,21 @@ use opentelemetry::global;
 ///     Ok(())
 /// }
 /// ```
-pub fn init<T>(cfg: &Configs<T>) -> Result<SdkMeterProvider, MetricsError>
-where
-    T: DynamicConfigs,
-{
-    if !cfg.metric.enable {
-        debug!("metrics::init skipping metrics export setup");
-        return Ok(SdkMeterProvider::default());
+pub fn install() -> Result<SdkMeterProvider, MetricsError> {
+    info!("metrics::install configure metrics...");
+
+    #[cfg(feature = "otlp")]
+    {
+        let meter = exporters::otlp_grpc::install()?;
+        Ok(meter)
     }
 
-    debug!("metrics::init configure metrics...");
-
-    match cfg.metric.exporter {
-        MetricExporterKind::OtlpGrpc => {
-            #[cfg(feature = "otlp")]
-            {
-                let meter = exporters::otlp_grpc::install(cfg)?;
-                global::set_meter_provider(meter.clone());
-                debug!("metrics::init otlp installed");
-                Ok(meter)
-            }
-
-            #[cfg(not(feature = "otlp"))]
-            {
-                error!("otlp metrics required to configure features = [otlp]");
-                Err(MetricsError::InvalidFeaturesError)
-            }
-        }
-        MetricExporterKind::Stdout => {
-            #[cfg(feature = "stdout")]
-            {
-                let meter = exporters::stdout::install()?;
-                global::set_meter_provider(meter.clone());
-                debug!("metrics::init stdout installed");
-                Ok(meter)
-            }
-
-            #[cfg(not(feature = "stdout"))]
-            {
-                error!("stdout metrics required to configure features = [stdout]");
-                Err(MetricsError::InvalidFeaturesError)
-            }
-        }
+    #[cfg(feature = "stdout")]
+    {
+        let meter = exporters::stdout::install()?;
+        Ok(meter)
     }
+
+    #[cfg(not(any(feature = "stdout", feature = "otlp")))]
+    return exporters::noop::install();
 }
