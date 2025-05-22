@@ -9,9 +9,36 @@
 //! This module is conditionally compiled when the "stdout" feature is enabled
 //! and provides functionality to export metrics to standard output, which is
 //! primarily useful for development and debugging purposes.
+//!
+//! ## Use Cases
+//!
+//! - Local development: Quickly verify that metrics are being recorded and exported.
+//! - Debugging: Inspect metric output without running a collector or Prometheus server.
+//!
+//! ## Configuration
+//!
+//! Enable this exporter by building with the `stdout` feature flag:
+//!
+//! ```sh
+//! cargo build --features stdout
+//! ```
+//!
+//! # Example
+//!
+//! ```rust
+//! use metrics::exporters::stdout;
+//! let provider = stdout::install().unwrap();
+//! ```
+//!
 
 use crate::errors::MetricsError;
-use opentelemetry_sdk::metrics::{MeterProviderBuilder, PeriodicReader, SdkMeterProvider};
+use configs::app::AppConfigs;
+use opentelemetry::{KeyValue, global};
+use opentelemetry_sdk::{
+    Resource,
+    metrics::{PeriodicReader, SdkMeterProvider},
+};
+use tracing::info;
 
 /// Creates and installs a standard output metrics exporter.
 ///
@@ -29,9 +56,29 @@ use opentelemetry_sdk::metrics::{MeterProviderBuilder, PeriodicReader, SdkMeterP
 /// are being recorded correctly before configuring a production-ready exporter
 /// like OTLP or Prometheus.
 pub fn install() -> Result<SdkMeterProvider, MetricsError> {
-    let exporter = opentelemetry_stdout::MetricExporter::default();
+    let app_cfgs = AppConfigs::new();
 
+    let exporter = opentelemetry_stdout::MetricExporter::default();
     let reader = PeriodicReader::builder(exporter).build();
 
-    Ok(MeterProviderBuilder::default().with_reader(reader).build())
+    let provider = SdkMeterProvider::builder()
+        .with_reader(reader)
+        .with_resource(
+            Resource::builder()
+                .with_service_name(app_cfgs.name.clone())
+                .with_attribute(KeyValue::new(
+                    "service.namespace",
+                    format!("{}", app_cfgs.namespace),
+                ))
+                .with_attribute(KeyValue::new("environment", format!("{}", app_cfgs.env)))
+                .with_attribute(KeyValue::new("library.language", "rust"))
+                .build(),
+        )
+        .build();
+
+    global::set_meter_provider(provider.clone());
+
+    info!("traces::install stdout metric installed");
+
+    Ok(provider)
 }

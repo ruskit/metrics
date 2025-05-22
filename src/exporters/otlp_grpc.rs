@@ -9,18 +9,36 @@
 //! This module is conditionally compiled when the "otlp" feature is enabled
 //! and provides functionality to export metrics to an OpenTelemetry collector
 //! using the OTLP protocol over gRPC.
+//!
+//! ## Use Cases
+//!
+//! - Production deployments: Export metrics to a centralized OpenTelemetry collector.
+//! - Cloud-native environments: Integrate with observability pipelines using OTLP.
+//!
+//! ## Configuration
+//!
+//! Enable this exporter by building with the `otlp` feature flag:
+//!
+//! ```sh
+//! cargo build --features otlp
+//! ```
+//!
+//! ## Authentication
+//!
+//! The exporter uses the header access key and access key from configuration for
+//! authentication with the OpenTelemetry collector.
 
 use crate::errors::MetricsError;
-use configs::{Configs, DynamicConfigs};
-use opentelemetry::KeyValue;
-use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig, WithTonicConfig};
-use opentelemetry_sdk::{
-    metrics::{PeriodicReader, SdkMeterProvider, Temporality},
-    Resource,
+use configs::{app::AppConfigs, otlp::OTLPConfigs};
+use opentelemetry::{KeyValue, global};
+use opentelemetry_otlp::{
+    Compression, MetricExporter, Protocol, WithExportConfig, WithTonicConfig,
 };
-use std::time::Duration;
-use tonic::metadata::{Ascii, MetadataKey, MetadataMap};
-use tracing::error;
+use opentelemetry_sdk::{
+    Resource,
+    metrics::{PeriodicReader, SdkMeterProvider},
+};
+use tracing::{error, info};
 
 /// Creates and installs an OTLP metrics exporter.
 ///
@@ -41,40 +59,27 @@ use tracing::error;
 /// * `Ok(SdkMeterProvider)` - The configured meter provider
 /// * `Err(MetricsError)` - If an error occurred during exporter setup
 ///
-/// # Authentication
+/// # Configuration
 ///
-/// The exporter uses the header access key and access key from configuration for
-/// authentication with the OpenTelemetry collector.
-pub fn install<T>(cfg: &Configs<T>) -> Result<SdkMeterProvider, MetricsError>
-where
-    T: DynamicConfigs,
-{
-    let key: MetadataKey<Ascii> = match cfg.trace.header_access_key.clone().parse() {
-        Ok(key) => key,
-        Err(_) => {
-            error!("failure to convert cfg.trace.header_key");
-            MetadataKey::<Ascii>::from_bytes("api-key".as_bytes()).unwrap()
-        }
-    };
-
-    let value = match cfg.trace.access_key.parse() {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            error!("failure to convert cfg.trace.header_value");
-            Err(MetricsError::ConversionError)
-        }
-    }?;
-
-    let mut map = MetadataMap::with_capacity(2);
-    map.insert(key, value);
+/// The OTLP exporter is configured using the application's OTLP settings, including endpoint, timeout, and authentication headers. See the `OTLPConfigs` struct for details.
+///
+/// # Example
+///
+/// ```rust
+/// use metrics::exporters::otlp_grpc;
+/// let provider = otlp_grpc::install().unwrap();
+/// ```
+///
+pub fn install() -> Result<SdkMeterProvider, MetricsError> {
+    let app_cfgs = AppConfigs::new();
+    let otlp_cfgs = OTLPConfigs::new();
 
     let exporter = match MetricExporter::builder()
         .with_tonic()
-        .with_temporality(Temporality::Delta)
         .with_protocol(Protocol::Grpc)
-        .with_timeout(Duration::from_secs(cfg.metric.export_timeout))
-        .with_endpoint(cfg.metric.host.clone())
-        .with_metadata(map)
+        .with_timeout(otlp_cfgs.exporter_timeout)
+        .with_endpoint(&otlp_cfgs.endpoint)
+        .with_compression(Compression::Gzip)
         .build()
     {
         Ok(p) => Ok(p),
@@ -88,23 +93,27 @@ where
     }?;
 
     let reader = PeriodicReader::builder(exporter)
-        .with_interval(Duration::from_secs(cfg.metric.export_interval))
+        .with_interval(otlp_cfgs.exporter_interval)
         .build();
 
     let provider = SdkMeterProvider::builder()
         .with_reader(reader)
         .with_resource(
             Resource::builder()
-                .with_service_name(cfg.app.name.clone())
+                .with_service_name(app_cfgs.name.clone())
                 .with_attribute(KeyValue::new(
-                    "service.type",
-                    cfg.trace.service_type.clone(),
+                    "service.namespace",
+                    format!("{}", app_cfgs.namespace),
                 ))
-                .with_attribute(KeyValue::new("environment", format!("{}", cfg.app.env)))
+                .with_attribute(KeyValue::new("environment", format!("{}", app_cfgs.env)))
                 .with_attribute(KeyValue::new("library.language", "rust"))
                 .build(),
         )
         .build();
+
+    global::set_meter_provider(provider.clone());
+
+    info!("traces::install otlp metric installed");
 
     Ok(provider)
 }

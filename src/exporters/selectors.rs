@@ -8,35 +8,30 @@
 //!
 //! This module defines the temporality selection strategy used by the metrics exporters.
 //! Temporality refers to how successive data points relate to each other in time.
+//!
+//! ## Usage
+//!
+//! Temporality selectors are used internally by exporters to determine how metric data points are reported over time. Most users do not need to interact with this module directly unless implementing a custom exporter or modifying temporality behavior.
 
 use opentelemetry_sdk::{
     error::OTelSdkResult,
     metrics::{
-        data::ResourceMetrics, reader::MetricReader, InstrumentKind, MetricResult, Pipeline,
-        Temporality,
+        InstrumentKind, MetricResult, Pipeline, Temporality, data::ResourceMetrics,
+        reader::MetricReader,
     },
 };
 use std::sync::Weak;
 
 /// # OTLPTemporalitySelector
 ///
-/// Selects the appropriate temporality for different instrument kinds when using OTLP.
+/// Implements a temporality selection strategy for OTLP metrics exporters.
 ///
-/// This struct implements the `MetricReader` trait to provide a temporality selection
-/// strategy that optimizes for different instrument types:
+/// This selector is used by the OTLP exporter to determine whether to use cumulative or delta temporality for each instrument type. It is designed to optimize compatibility and efficiency for different metric backends.
 ///
-/// - Uses Cumulative temporality for counters that can go up and down (UpDownCounter)
-/// - Uses Delta temporality for other instrument types
+/// - **Cumulative**: Used for UpDownCounter and ObservableUpDownCounter instruments, matching Prometheus-style reporting.
+/// - **Delta**: Used for all other instrument types, matching Statsd-style reporting.
 ///
-/// ## Temporality Background
-///
-/// - **Cumulative temporality**: Successive data points repeat the starting timestamp.
-///   For example, from start time T0, data points cover time ranges (T0, T1], (T0, T2], (T0, T3], etc.
-///   Common in systems like Prometheus. Provides natural averaging when collection fails intermittently.
-///
-/// - **Delta temporality**: Successive data points advance the starting timestamp.
-///   For example, from start time T0, data points cover time ranges (T0, T1], (T1, T2], (T2, T3], etc.
-///   Common in systems like Statsd. Enables sampling and reduces process memory usage.
+/// This struct is primarily used internally and is not intended for direct use by most applications.
 #[derive(Debug, Clone, Default)]
 pub struct OTLPTemporalitySelector;
 
