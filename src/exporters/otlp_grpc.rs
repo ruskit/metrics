@@ -9,6 +9,24 @@
 //! This module is conditionally compiled when the "otlp" feature is enabled
 //! and provides functionality to export metrics to an OpenTelemetry collector
 //! using the OTLP protocol over gRPC.
+//!
+//! ## Use Cases
+//!
+//! - Production deployments: Export metrics to a centralized OpenTelemetry collector.
+//! - Cloud-native environments: Integrate with observability pipelines using OTLP.
+//!
+//! ## Configuration
+//!
+//! Enable this exporter by building with the `otlp` feature flag:
+//!
+//! ```sh
+//! cargo build --features otlp
+//! ```
+//!
+//! ## Authentication
+//!
+//! The exporter uses the header access key and access key from configuration for
+//! authentication with the OpenTelemetry collector.
 
 use crate::errors::MetricsError;
 use configs::{app::AppConfigs, otlp::OTLPConfigs};
@@ -41,10 +59,17 @@ use tracing::{error, info};
 /// * `Ok(SdkMeterProvider)` - The configured meter provider
 /// * `Err(MetricsError)` - If an error occurred during exporter setup
 ///
-/// # Authentication
+/// # Configuration
 ///
-/// The exporter uses the header access key and access key from configuration for
-/// authentication with the OpenTelemetry collector.
+/// The OTLP exporter is configured using the application's OTLP settings, including endpoint, timeout, and authentication headers. See the `OTLPConfigs` struct for details.
+///
+/// # Example
+///
+/// ```rust
+/// use metrics::exporters::otlp_grpc;
+/// let provider = otlp_grpc::install().unwrap();
+/// ```
+///
 pub fn install() -> Result<SdkMeterProvider, MetricsError> {
     let app_cfgs = AppConfigs::new();
     let otlp_cfgs = OTLPConfigs::new();

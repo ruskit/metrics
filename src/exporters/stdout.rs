@@ -9,6 +9,27 @@
 //! This module is conditionally compiled when the "stdout" feature is enabled
 //! and provides functionality to export metrics to standard output, which is
 //! primarily useful for development and debugging purposes.
+//!
+//! ## Use Cases
+//!
+//! - Local development: Quickly verify that metrics are being recorded and exported.
+//! - Debugging: Inspect metric output without running a collector or Prometheus server.
+//!
+//! ## Configuration
+//!
+//! Enable this exporter by building with the `stdout` feature flag:
+//!
+//! ```sh
+//! cargo build --features stdout
+//! ```
+//!
+//! # Example
+//!
+//! ```rust
+//! use metrics::exporters::stdout;
+//! let provider = stdout::install().unwrap();
+//! ```
+//!
 
 use crate::errors::MetricsError;
 use configs::app::AppConfigs;
