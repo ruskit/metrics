@@ -26,8 +26,6 @@
 //!
 //! If no export feature is enabled, the no-op exporter will be used as a fallback.
 
-mod selectors;
-
 #[cfg(feature = "otlp")]
 pub mod otlp_grpc;
 
